@@ -1,0 +1,12 @@
+[package]
+name = "firewall"
+description = "simple firewall for linux"
+version = "0.0.1"
+authors = ["sak96"]
+edition = "2018"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+nfq = "0.2"
+dns-parser = "0.8"
+etherparse = "0.9"
