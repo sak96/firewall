@@ -34,10 +34,7 @@ impl AppWall {
             match TrafficPacket::from(payload) {
                 Err(msg) => println!("err: {}", msg),
                 Ok(pkt) => {
-                    if !pkt.dns_data.is_empty() {
-                        println!("{:#?}", pkt.dns_data);
-                    }
-                    println!("{}", pkt.dest_addr);
+                    println!("{:#?}", pkt);
                 }
             }
             msg.set_verdict(verdict);

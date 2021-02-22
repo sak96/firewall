@@ -1,9 +1,13 @@
 use dns_parser::{rdata, Packet as DnsPacket, RData};
-use etherparse::{InternetSlice, SlicedPacket};
+use etherparse::{InternetSlice, SlicedPacket, TransportSlice};
 use std::{net::IpAddr, result::Result};
 
+#[derive(Debug)]
 pub struct TrafficPacket {
     pub dest_addr: IpAddr,
+    pub dest_port: u16,
+    pub src_addr: IpAddr,
+    pub src_port: u16,
     pub dns_data: Vec<(String, IpAddr)>,
 }
 
@@ -32,19 +36,43 @@ impl TrafficPacket {
         dns_data
     }
 
+    fn get_ips_from_packet(pkt: &SlicedPacket) -> Result<(IpAddr, IpAddr), String> {
+        match &pkt.ip {
+            Some(InternetSlice::Ipv4(ip)) => Ok((
+                IpAddr::V4(ip.source_addr()),
+                IpAddr::V4(ip.destination_addr()),
+            )),
+            Some(InternetSlice::Ipv6(ip, _)) => Ok((
+                IpAddr::V6(ip.source_addr()),
+                IpAddr::V6(ip.destination_addr()),
+            )),
+            None => {
+                return Err("could not parse ip layer".into());
+            }
+        }
+    }
+
+    fn get_ports_from_packet(pkt: &SlicedPacket) -> Result<(u16, u16), String> {
+        match &pkt.transport {
+            Some(TransportSlice::Udp(udp)) => Ok((udp.source_port(), udp.destination_port())),
+            Some(TransportSlice::Tcp(tcp)) => Ok((tcp.source_port(), tcp.destination_port())),
+            None => {
+                return Err("could not parse transport layer".into());
+            }
+        }
+    }
+
     pub fn from(packet: &[u8]) -> Result<Self, String> {
         match SlicedPacket::from_ip(packet) {
             Ok(pkt) => {
-                let dest_addr = match pkt.ip {
-                    Some(InternetSlice::Ipv4(ip)) => IpAddr::V4(ip.destination_addr()),
-                    Some(InternetSlice::Ipv6(ip, _)) => IpAddr::V6(ip.destination_addr()),
-                    None => {
-                        return Err("could not parse ip layer".into());
-                    }
-                };
+                let (src_addr, dest_addr) = Self::get_ips_from_packet(&pkt)?;
+                let (src_port, dest_port) = Self::get_ports_from_packet(&pkt)?;
                 let dns_data = Self::parse_dns(pkt.payload);
                 Ok(Self {
                     dest_addr,
+                    dest_port,
+                    src_addr,
+                    src_port,
                     dns_data,
                 })
             }
