@@ -81,4 +81,34 @@ impl TrafficPacket {
             }
         }
     }
+
+    fn ip_to_string(ip: IpAddr) -> String {
+        match &ip {
+            IpAddr::V4(ipv4) => ipv4
+                .octets()
+                .iter()
+                .rev()
+                .fold(String::new(), |string, &oct| {
+                    format!("{}{:02X?}", string, oct)
+                }),
+            IpAddr::V6(ipv6) => ipv6
+                .octets()
+                .chunks(4)
+                .map(|a| a.iter().rev())
+                .flatten()
+                .fold(String::new(), |string, &oct| {
+                    format!("{}{:02X?}", string, oct)
+                }),
+        }
+    }
+
+    pub fn to_proc_net_text(&self) -> String {
+        format!(
+            "{}:{:04X?} {}:{:04X?}",
+            Self::ip_to_string(self.dest_addr),
+            self.dest_port,
+            Self::ip_to_string(self.src_addr),
+            self.src_port,
+        )
+    }
 }

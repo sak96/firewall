@@ -39,6 +39,7 @@ impl AppWall {
                 Err(msg) => println!("err: {}", msg),
                 Ok(pkt) => {
                     println!("{:#?}", pkt);
+                    println!("{}", pkt.to_proc_net_text());
                 }
             }
             msg.set_verdict(verdict);
