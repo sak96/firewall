@@ -20,6 +20,10 @@ impl AppWall {
                 .args(std::iter::once("-I").chain(rule.split_whitespace()))
                 .output()
                 .unwrap();
+            Command::new("ip6tables")
+                .args(std::iter::once("-I").chain(rule.split_whitespace()))
+                .output()
+                .unwrap();
         }
     }
 
@@ -49,6 +53,10 @@ impl AppWall {
     pub fn stop() {
         for rule in IPTABLES_RULES.iter() {
             Command::new("iptables")
+                .args(std::iter::once("-D").chain(rule.split_whitespace()))
+                .output()
+                .unwrap();
+            Command::new("ip6tables")
                 .args(std::iter::once("-D").chain(rule.split_whitespace()))
                 .output()
                 .unwrap();
