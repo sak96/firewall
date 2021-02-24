@@ -48,7 +48,7 @@ impl AppWall {
                         } else {
                             pkt.dest_addr.to_string()
                         };
-                        println!("dest -> {}:{}", dest, pkt.dest_port);
+                        println!("dest -> {}:{} ({})", dest, pkt.dest_port, pkt.protocol);
                         println!("{}", pkt.to_proc_net_text());
                     } else {
                         println!("dns packet -> {:#?}", pkt.dns_data);

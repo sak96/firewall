@@ -8,6 +8,7 @@ pub struct TrafficPacket {
     pub dest_port: u16,
     pub src_addr: IpAddr,
     pub src_port: u16,
+    pub protocol: &'static str,
     pub dns_data: Vec<(String, IpAddr)>,
 }
 
@@ -52,10 +53,14 @@ impl TrafficPacket {
         }
     }
 
-    fn get_ports_from_packet(pkt: &SlicedPacket) -> Result<(u16, u16), String> {
+    fn get_ports_from_packet(pkt: &SlicedPacket) -> Result<(u16, u16, &'static str), String> {
         match &pkt.transport {
-            Some(TransportSlice::Udp(udp)) => Ok((udp.source_port(), udp.destination_port())),
-            Some(TransportSlice::Tcp(tcp)) => Ok((tcp.source_port(), tcp.destination_port())),
+            Some(TransportSlice::Udp(udp)) => {
+                Ok((udp.source_port(), udp.destination_port(), "udp"))
+            }
+            Some(TransportSlice::Tcp(tcp)) => {
+                Ok((tcp.source_port(), tcp.destination_port(), "tcp"))
+            }
             None => {
                 return Err("could not parse transport layer".into());
             }
@@ -66,13 +71,14 @@ impl TrafficPacket {
         match SlicedPacket::from_ip(packet) {
             Ok(pkt) => {
                 let (src_addr, dest_addr) = Self::get_ips_from_packet(&pkt)?;
-                let (src_port, dest_port) = Self::get_ports_from_packet(&pkt)?;
+                let (src_port, dest_port, protocol) = Self::get_ports_from_packet(&pkt)?;
                 let dns_data = Self::parse_dns(pkt.payload);
                 Ok(Self {
                     dest_addr,
                     dest_port,
                     src_addr,
                     src_port,
+                    protocol,
                     dns_data,
                 })
             }
@@ -105,10 +111,10 @@ impl TrafficPacket {
     pub fn to_proc_net_text(&self) -> String {
         format!(
             "{}:{:04X?} {}:{:04X?}",
-            Self::ip_to_string(self.dest_addr),
-            self.dest_port,
             Self::ip_to_string(self.src_addr),
             self.src_port,
+            Self::ip_to_string(self.dest_addr),
+            self.dest_port,
         )
     }
 }
