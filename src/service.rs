@@ -1,3 +1,4 @@
+use crate::dns::DnsCache;
 use crate::packet::TrafficPacket;
 use nfq::{Queue, Verdict};
 use std::process::Command;
@@ -11,7 +12,10 @@ const IPTABLES_RULES: [&str; 3] = [
     "OUTPUT --protocol tcp -m mark --mark 1 -j REJECT",
 ];
 
-pub struct AppWall {}
+#[derive(Default)]
+pub struct AppWall {
+    dns: DnsCache,
+}
 
 impl AppWall {
     pub fn start() {
@@ -27,7 +31,7 @@ impl AppWall {
         }
     }
 
-    pub fn run() -> std::io::Result<()> {
+    pub fn run(&mut self) -> std::io::Result<()> {
         let mut queue = Queue::open().unwrap();
         queue.bind(0)?;
         loop {
@@ -37,9 +41,21 @@ impl AppWall {
             let payload = msg.get_payload();
             match TrafficPacket::from(payload) {
                 Err(msg) => println!("err: {}", msg),
-                Ok(pkt) => {
-                    println!("{:#?}", pkt);
-                    println!("{}", pkt.to_proc_net_text());
+                Ok(mut pkt) => {
+                    if pkt.dns_data.is_empty() {
+                        let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr) {
+                            hostname.get(0).unwrap().to_string()
+                        } else {
+                            pkt.dest_addr.to_string()
+                        };
+                        println!("dest -> {}:{}", dest, pkt.dest_port);
+                        println!("{}", pkt.to_proc_net_text());
+                    } else {
+                        println!("dns packet -> {:#?}", pkt.dns_data);
+                        for (hostname, ip) in pkt.dns_data.drain(..) {
+                            self.dns.add(ip, hostname);
+                        }
+                    }
                 }
             }
             msg.set_verdict(verdict);
