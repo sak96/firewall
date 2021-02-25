@@ -1,6 +1,9 @@
-use crate::dns::DnsCache;
-use crate::packet::TrafficPacket;
+mod dns;
+mod packet;
+
+use dns::DnsCache;
 use nfq::{Queue, Verdict};
+use packet::TrafficPacket;
 use std::process::Command;
 
 const IPTABLES_RULES: [&str; 3] = [

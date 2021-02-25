@@ -1,5 +1,3 @@
-pub mod dns;
-pub mod packet;
 mod service;
 
 fn main() -> std::io::Result<()> {
