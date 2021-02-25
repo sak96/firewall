@@ -10,9 +10,8 @@ fn main() -> std::io::Result<()> {
 
     // start the service
     let mut srv = service::AppWall::default();
-    service::AppWall::stop();
-    service::AppWall::start();
+    srv.start();
     let run_value = srv.run();
-    service::AppWall::stop();
+    srv.stop();
     run_value
 }

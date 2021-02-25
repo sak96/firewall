@@ -21,18 +21,23 @@ pub struct AppWall {
 }
 
 impl AppWall {
-    pub fn start() {
+    fn run_iptables_rule(iptables: &str, operation: &str, rule: &str) {
+        debug!("executing: {} {} {}", iptables, operation, rule);
+        Command::new(iptables)
+            .args(std::iter::once(operation).chain(rule.split_whitespace()))
+            .output()
+            .unwrap();
+    }
+
+    pub fn start(&self) {
         for rule in IPTABLES_RULES.iter() {
-            debug!("executing: iptables -I {}", rule);
-            Command::new("iptables")
-                .args(std::iter::once("-I").chain(rule.split_whitespace()))
-                .output()
-                .unwrap();
-            debug!("executing: iptables6 -I {}", rule);
-            Command::new("ip6tables")
-                .args(std::iter::once("-I").chain(rule.split_whitespace()))
-                .output()
-                .unwrap();
+            // clean the rule
+            Self::run_iptables_rule("iptables", "-D", rule);
+            Self::run_iptables_rule("ip6tables", "-D", rule);
+
+            // add the rule
+            Self::run_iptables_rule("iptables", "-I", rule);
+            Self::run_iptables_rule("ip6tables", "-I", rule);
         }
     }
 
@@ -77,18 +82,10 @@ impl AppWall {
         Ok(())
     }
 
-    pub fn stop() {
+    pub fn stop(&self) {
         for rule in IPTABLES_RULES.iter() {
-            debug!("executing: iptables -D {}", rule);
-            Command::new("iptables")
-                .args(std::iter::once("-D").chain(rule.split_whitespace()))
-                .output()
-                .unwrap();
-            debug!("executing: iptables6 -D {}", rule);
-            Command::new("ip6tables")
-                .args(std::iter::once("-D").chain(rule.split_whitespace()))
-                .output()
-                .unwrap();
+            Self::run_iptables_rule("iptables", "-D", rule);
+            Self::run_iptables_rule("ip6tables", "-D", rule);
         }
     }
 }
