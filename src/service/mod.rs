@@ -23,10 +23,12 @@ pub struct AppWall {
 impl AppWall {
     pub fn start() {
         for rule in IPTABLES_RULES.iter() {
+            debug!("executing: iptables -I {}", rule);
             Command::new("iptables")
                 .args(std::iter::once("-I").chain(rule.split_whitespace()))
                 .output()
                 .unwrap();
+            debug!("executing: iptables6 -I {}", rule);
             Command::new("ip6tables")
                 .args(std::iter::once("-I").chain(rule.split_whitespace()))
                 .output()
@@ -43,7 +45,7 @@ impl AppWall {
             msg.get_payload();
             let payload = msg.get_payload();
             match TrafficPacket::from(payload) {
-                Err(msg) => println!("err: {}", msg),
+                Err(msg) => warn!("error {} occurred while parsing: {:#?}", msg, payload),
                 Ok(mut pkt) => {
                     if pkt.dns_data.is_empty() {
                         let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr) {
@@ -51,16 +53,16 @@ impl AppWall {
                         } else {
                             pkt.dest_addr.to_string()
                         };
-                        println!(
-                            "connection process({}) -> dest ({}:{}), protocol ({})",
+                        info!(
+                            "{} connection by '{}' to '{}:{}'",
+                            pkt.protocol,
                             pkt.get_process_name().unwrap_or("unknown".into()),
                             dest,
                             pkt.dest_port,
-                            pkt.protocol,
                         );
                     } else {
-                        println!("dns packet -> {:#?}", pkt.dns_data);
                         for (hostname, ip) in pkt.dns_data.drain(..) {
+                            info!("hostname '{}' maps to '{}'", hostname, ip);
                             self.dns.add(ip, hostname);
                         }
                     }
@@ -77,10 +79,12 @@ impl AppWall {
 
     pub fn stop() {
         for rule in IPTABLES_RULES.iter() {
+            debug!("executing: iptables -D {}", rule);
             Command::new("iptables")
                 .args(std::iter::once("-D").chain(rule.split_whitespace()))
                 .output()
                 .unwrap();
+            debug!("executing: iptables6 -D {}", rule);
             Command::new("ip6tables")
                 .args(std::iter::once("-D").chain(rule.split_whitespace()))
                 .output()

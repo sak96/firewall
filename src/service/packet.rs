@@ -133,6 +133,8 @@ impl TrafficPacket {
                     if path_buf.to_str()? == link_name.as_str() {
                         return path.iter().nth(2)?.to_str()?.parse().ok();
                     }
+                } else {
+                    debug!("could not read link for {}", path.display());
                 }
             }
         }
@@ -155,9 +157,10 @@ impl TrafficPacket {
             if content.starts_with(&proc_next_text) {
                 let inode = line.trim_start().split_whitespace().nth(9).unwrap();
                 if let Some(pid) = Self::get_pid_of_inode(inode) {
+                    debug!("pid using socket inode {} is {}", inode, pid);
                     return Some(if let Ok(path) = read_link(format!("/proc/{}/exe", pid)) {
                         if let Some(name) = path.to_str() {
-                            name.to_string()
+                            debug!("full path for pid {} is {}", pid, name);
                         } else {
                             pid.to_string()
                         }
