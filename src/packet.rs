@@ -1,6 +1,12 @@
 use dns_parser::{rdata, Packet as DnsPacket, RData};
 use etherparse::{InternetSlice, SlicedPacket, TransportSlice};
-use std::{net::IpAddr, result::Result};
+use glob::glob;
+use std::{
+    fs::{read_link, File},
+    io::{BufRead, BufReader},
+    net::IpAddr,
+    result::Result,
+};
 
 #[derive(Debug)]
 pub struct TrafficPacket {
@@ -13,7 +19,8 @@ pub struct TrafficPacket {
 }
 
 impl TrafficPacket {
-    /// Parse Dns response from transport layer payload
+    const FILE_DESCRIPTOR_GLOB: &'static str = "/proc/[0-9]*/fd/[0-9]*";
+
     fn parse_dns(payload: &[u8]) -> Vec<(String, IpAddr)> {
         let mut dns_data = vec![];
         if let Ok(packet) = DnsPacket::parse(payload) {
@@ -108,7 +115,7 @@ impl TrafficPacket {
         }
     }
 
-    pub fn to_proc_net_text(&self) -> String {
+    fn to_proc_net_text(&self) -> String {
         format!(
             "{}:{:04X?} {}:{:04X?}",
             Self::ip_to_string(self.src_addr),
@@ -116,5 +123,50 @@ impl TrafficPacket {
             Self::ip_to_string(self.dest_addr),
             self.dest_port,
         )
+    }
+
+    fn get_pid_of_inode(inode: &str) -> Option<u32> {
+        let link_name = format!("socket:[{}]", inode);
+        for entry in glob(Self::FILE_DESCRIPTOR_GLOB).ok()? {
+            if let Ok(path) = entry {
+                if let Ok(path_buf) = path.read_link() {
+                    if path_buf.to_str()? == link_name.as_str() {
+                        return path.iter().nth(2)?.to_str()?.parse().ok();
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn get_process_name(&self) -> Option<String> {
+        let filename = if matches!(self.dest_addr, IpAddr::V6(_)) {
+            format!("/proc/net/{}6", self.protocol)
+        } else {
+            format!("/proc/net/{}", self.protocol)
+        };
+
+        let proc_next_text = self.to_proc_net_text();
+        let file = File::open(filename).unwrap();
+        let reader = BufReader::new(file);
+        for io_line in reader.lines() {
+            let line = io_line.unwrap();
+            let content = line.trim_start().splitn(2, " ").last()?;
+            if content.starts_with(&proc_next_text) {
+                let inode = line.trim_start().split_whitespace().nth(9).unwrap();
+                if let Some(pid) = Self::get_pid_of_inode(inode) {
+                    return Some(if let Ok(path) = read_link(format!("/proc/{}/exe", pid)) {
+                        if let Some(name) = path.to_str() {
+                            name.to_string()
+                        } else {
+                            pid.to_string()
+                        }
+                    } else {
+                        pid.to_string()
+                    });
+                }
+            }
+        }
+        None
     }
 }

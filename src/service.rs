@@ -48,8 +48,13 @@ impl AppWall {
                         } else {
                             pkt.dest_addr.to_string()
                         };
-                        println!("dest -> {}:{} ({})", dest, pkt.dest_port, pkt.protocol);
-                        println!("{}", pkt.to_proc_net_text());
+                        println!(
+                            "connection process({}) -> dest ({}:{}), protocol ({})",
+                            pkt.get_process_name().unwrap_or("unknown".into()),
+                            dest,
+                            pkt.dest_port,
+                            pkt.protocol,
+                        );
                     } else {
                         println!("dns packet -> {:#?}", pkt.dns_data);
                         for (hostname, ip) in pkt.dns_data.drain(..) {
