@@ -138,6 +138,7 @@ impl TrafficPacket {
                 }
             }
         }
+        warn!("could not find socket {}", link_name);
         None
     }
 
@@ -161,7 +162,7 @@ impl TrafficPacket {
                     return Some(if let Ok(path) = read_link(format!("/proc/{}/exe", pid)) {
                         if let Some(name) = path.to_str() {
                             debug!("full path for pid {} is {}", pid, name);
-                            if let Some(last_path) = name.split("/").last(){
+                            if let Some(last_path) = name.split("/").last() {
                                 last_path.to_string()
                             } else {
                                 name.to_string()

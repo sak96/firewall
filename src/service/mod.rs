@@ -58,12 +58,20 @@ impl AppWall {
                         } else {
                             pkt.dest_addr.to_string()
                         };
+                        let process_name = if let Some(name) = pkt.get_process_name() {
+                            name
+                        } else {
+                            if pkt.src_port == 53 {
+                                debug!("ignoring the pkt as it is dns answer");
+                            } else {
+                                warn!("could not find process name {:#?}", pkt);
+                                warn!("payload {:#?}", payload);
+                            }
+                            "unknown".into()
+                        };
                         info!(
                             "{} connection by '{}' to '{}:{}'",
-                            pkt.protocol,
-                            pkt.get_process_name().unwrap_or("unknown".into()),
-                            dest,
-                            pkt.dest_port,
+                            pkt.protocol, process_name, dest, pkt.dest_port,
                         );
                     } else {
                         for (hostname, ip) in pkt.dns_data.drain(..) {
