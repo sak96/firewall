@@ -173,15 +173,16 @@ impl TrafficPacket {
 
         let proc_net_text = Self::to_proc_net_text(src_addr, dest_addr);
         let file = File::open(filename).unwrap();
-        let reader = BufReader::new(file);
-        for io_line in reader.lines() {
-            let line = io_line.unwrap();
+        let mut reader = BufReader::new(file);
+        let mut line = String::new();
+        while reader.read_line(&mut line).unwrap() != 0 {
             let content = line.trim_start().splitn(2, " ").last()?;
             if content.starts_with(&proc_net_text) {
                 let inode = line.trim_start().split_whitespace().nth(9).unwrap();
                 let pid = Self::get_pid_of_inode(inode)?;
                 return Some(pid);
             }
+            line.clear();
         }
         None
     }
