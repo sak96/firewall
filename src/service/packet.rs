@@ -14,6 +14,8 @@ pub struct TrafficPacket {
     pub src_addr: SocketAddr,
     pub protocol: &'static str,
     pub dns_data: Vec<(String, IpAddr)>,
+    pub pid: u32,
+    pub exe: Option<String>,
 }
 
 impl TrafficPacket {
@@ -79,6 +81,8 @@ impl TrafficPacket {
                 let (src_port, dest_port, protocol) = Self::get_ports_from_packet(&pkt)?;
                 let dest_addr = SocketAddr::new(dest_ip, dest_port);
                 let src_addr = SocketAddr::new(src_ip, src_port);
+                let pid = Self::find_pid(&src_addr, &dest_addr, &protocol).unwrap_or(0);
+                let exe = Self::find_name_from_pid(pid);
 
                 let dns_data = Self::parse_dns(pkt.payload);
                 Ok(Self {
@@ -86,6 +90,8 @@ impl TrafficPacket {
                     src_addr,
                     protocol,
                     dns_data,
+                    pid,
+                    exe,
                 })
             }
             Err(msg) => {
@@ -114,13 +120,13 @@ impl TrafficPacket {
         }
     }
 
-    fn to_proc_net_text(&self) -> String {
+    fn to_proc_net_text(src_addr: &SocketAddr, dest_addr: &SocketAddr) -> String {
         format!(
             "{}:{:04X?} {}:{:04X?}",
-            Self::ip_to_string(self.src_addr.ip()),
-            self.src_addr.port(),
-            Self::ip_to_string(self.dest_addr.ip()),
-            self.dest_addr.port(),
+            Self::ip_to_string(src_addr.ip()),
+            src_addr.port(),
+            Self::ip_to_string(dest_addr.ip()),
+            dest_addr.port(),
         )
     }
 
@@ -141,37 +147,40 @@ impl TrafficPacket {
         None
     }
 
-    fn get_proc_name_from_pid(&self, pid: u32) -> String {
+    fn find_name_from_pid(pid: u32) -> Option<String> {
         if let Ok(path) = read_link(format!("/proc/{}/exe", pid)) {
             if let Some(path_str) = match path.file_name() {
                 Some(file_name) => file_name.to_str(),
                 None => path.to_str(),
             } {
-                return path_str.to_string();
+                return Some(path_str.to_string());
             }
         };
-        debug!("could get process name, using pid '{}' as name", pid);
-        return pid.to_string();
+        debug!("could get process name for pid '{}'", pid);
+        None
     }
 
-    pub fn get_process_name(&self) -> Option<String> {
-        let filename = if self.dest_addr.is_ipv6() {
-            format!("/proc/net/{}6", self.protocol)
+    fn find_pid(
+        src_addr: &SocketAddr,
+        dest_addr: &SocketAddr,
+        protocol: &'static str,
+    ) -> Option<u32> {
+        let filename = if dest_addr.is_ipv6() {
+            format!("/proc/net/{}6", protocol)
         } else {
-            format!("/proc/net/{}", self.protocol)
+            format!("/proc/net/{}", protocol)
         };
 
-        let proc_next_text = self.to_proc_net_text();
+        let proc_net_text = Self::to_proc_net_text(src_addr, dest_addr);
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         for io_line in reader.lines() {
             let line = io_line.unwrap();
             let content = line.trim_start().splitn(2, " ").last()?;
-            if content.starts_with(&proc_next_text) {
+            if content.starts_with(&proc_net_text) {
                 let inode = line.trim_start().split_whitespace().nth(9).unwrap();
                 let pid = Self::get_pid_of_inode(inode)?;
-                debug!("pid using socket inode {} is {}", inode, pid);
-                return Some(self.get_proc_name_from_pid(pid));
+                return Some(pid);
             }
         }
         None

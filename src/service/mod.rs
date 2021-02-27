@@ -58,7 +58,7 @@ impl AppWall {
                         } else {
                             pkt.dest_addr.to_string()
                         };
-                        let process_name = if let Some(name) = pkt.get_process_name() {
+                        let process_name = if let Some(name) = pkt.exe {
                             name
                         } else {
                             if pkt.src_addr.port() == 53 {
