@@ -142,6 +142,19 @@ impl TrafficPacket {
         None
     }
 
+    fn get_proc_name_from_pid(&self, pid: u32) -> String {
+        if let Ok(path) = read_link(format!("/proc/{}/exe", pid)) {
+            if let Some(path_str) = match path.file_name() {
+                Some(file_name) => file_name.to_str(),
+                None => path.to_str(),
+            } {
+                return path_str.to_string();
+            }
+        };
+        debug!("could get process name, using pid '{}' as name", pid);
+        return pid.to_string();
+    }
+
     pub fn get_process_name(&self) -> Option<String> {
         let filename = if matches!(self.dest_addr, IpAddr::V6(_)) {
             format!("/proc/net/{}6", self.protocol)
@@ -157,23 +170,9 @@ impl TrafficPacket {
             let content = line.trim_start().splitn(2, " ").last()?;
             if content.starts_with(&proc_next_text) {
                 let inode = line.trim_start().split_whitespace().nth(9).unwrap();
-                if let Some(pid) = Self::get_pid_of_inode(inode) {
-                    debug!("pid using socket inode {} is {}", inode, pid);
-                    return Some(if let Ok(path) = read_link(format!("/proc/{}/exe", pid)) {
-                        if let Some(name) = path.to_str() {
-                            debug!("full path for pid {} is {}", pid, name);
-                            if let Some(last_path) = name.split("/").last() {
-                                last_path.to_string()
-                            } else {
-                                name.to_string()
-                            }
-                        } else {
-                            pid.to_string()
-                        }
-                    } else {
-                        pid.to_string()
-                    });
-                }
+                let pid = Self::get_pid_of_inode(inode)?;
+                debug!("pid using socket inode {} is {}", inode, pid);
+                return Some(self.get_proc_name_from_pid(pid));
             }
         }
         None
