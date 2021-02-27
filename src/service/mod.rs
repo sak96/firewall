@@ -53,7 +53,7 @@ impl AppWall {
                 Err(msg) => warn!("error {} occurred while parsing: {:#?}", msg, payload),
                 Ok(mut pkt) => {
                     if pkt.dns_data.is_empty() {
-                        let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr) {
+                        let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr.ip()) {
                             hostname.get(0).unwrap().to_string()
                         } else {
                             pkt.dest_addr.to_string()
@@ -61,7 +61,7 @@ impl AppWall {
                         let process_name = if let Some(name) = pkt.get_process_name() {
                             name
                         } else {
-                            if pkt.src_port == 53 {
+                            if pkt.src_addr.port() == 53 {
                                 debug!("ignoring the pkt as it is dns answer");
                             } else {
                                 warn!("could not find process name {:#?}", pkt);
@@ -70,8 +70,10 @@ impl AppWall {
                             "unknown".into()
                         };
                         info!(
-                            "{} connection by '{}' to '{}:{}'",
-                            pkt.protocol, process_name, dest, pkt.dest_port,
+                            "{} connection by '{}' to '{}'",
+                            pkt.protocol,
+                            process_name,
+                            dest,
                         );
                     } else {
                         for (hostname, ip) in pkt.dns_data.drain(..) {

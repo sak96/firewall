@@ -4,16 +4,14 @@ use glob::glob;
 use std::{
     fs::{read_link, File},
     io::{BufRead, BufReader},
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     result::Result,
 };
 
 #[derive(Debug)]
 pub struct TrafficPacket {
-    pub dest_addr: IpAddr,
-    pub dest_port: u16,
-    pub src_addr: IpAddr,
-    pub src_port: u16,
+    pub dest_addr: SocketAddr,
+    pub src_addr: SocketAddr,
     pub protocol: &'static str,
     pub dns_data: Vec<(String, IpAddr)>,
 }
@@ -77,14 +75,15 @@ impl TrafficPacket {
     pub fn from(packet: &[u8]) -> Result<Self, String> {
         match SlicedPacket::from_ip(packet) {
             Ok(pkt) => {
-                let (src_addr, dest_addr) = Self::get_ips_from_packet(&pkt)?;
+                let (src_ip, dest_ip) = Self::get_ips_from_packet(&pkt)?;
                 let (src_port, dest_port, protocol) = Self::get_ports_from_packet(&pkt)?;
+                let dest_addr = SocketAddr::new(dest_ip, dest_port);
+                let src_addr = SocketAddr::new(src_ip, src_port);
+
                 let dns_data = Self::parse_dns(pkt.payload);
                 Ok(Self {
                     dest_addr,
-                    dest_port,
                     src_addr,
-                    src_port,
                     protocol,
                     dns_data,
                 })
@@ -118,10 +117,10 @@ impl TrafficPacket {
     fn to_proc_net_text(&self) -> String {
         format!(
             "{}:{:04X?} {}:{:04X?}",
-            Self::ip_to_string(self.src_addr),
-            self.src_port,
-            Self::ip_to_string(self.dest_addr),
-            self.dest_port,
+            Self::ip_to_string(self.src_addr.ip()),
+            self.src_addr.port(),
+            Self::ip_to_string(self.dest_addr.ip()),
+            self.dest_addr.port(),
         )
     }
 
@@ -156,7 +155,7 @@ impl TrafficPacket {
     }
 
     pub fn get_process_name(&self) -> Option<String> {
-        let filename = if matches!(self.dest_addr, IpAddr::V6(_)) {
+        let filename = if self.dest_addr.is_ipv6() {
             format!("/proc/net/{}6", self.protocol)
         } else {
             format!("/proc/net/{}", self.protocol)
