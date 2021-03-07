@@ -2,12 +2,12 @@ mod dns;
 mod packet;
 mod rules;
 
+use dialog::DialogBox;
 use dns::DnsCache;
 use nfq::{Queue, Verdict};
 use packet::TrafficPacket;
 use rules::{Rule, Rules};
 use std::process::Command;
-use dialog::DialogBox;
 
 const IPTABLES_RULES: [&str; 3] = [
     // Get DNS responses
@@ -45,6 +45,60 @@ impl AppWall {
         }
     }
 
+    fn apply_rules(&mut self, pkt: &TrafficPacket) -> Verdict {
+        let verdict;
+        let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr.ip()) {
+            hostname.get(0).unwrap().to_string()
+        } else {
+            pkt.dest_addr.to_string()
+        };
+        let process_name: String = if let Some(ref name) = pkt.exe {
+            name.into()
+        } else {
+            if pkt.src_addr.port() == 53 {
+                debug!("ignoring the pkt as it is dns answer");
+            } else {
+                warn!("could not find process name {:#?}", pkt);
+            }
+            "unknown".into()
+        };
+
+        if let Some(pkt_verdict) = self.rules.get_verdict(&pkt) {
+            verdict = pkt_verdict;
+        } else {
+            match dialog::Question::new(&format!(
+                "accept {} connection by '{}' to '{}'",
+                pkt.protocol, process_name, dest,
+            ))
+            .title("Firewall")
+            .show()
+            {
+                Ok(dialog::Choice::Yes) => {
+                    verdict = Verdict::Accept;
+                }
+                Ok(dialog::Choice::No) => {
+                    verdict = Verdict::Drop;
+                }
+                Ok(dialog::Choice::Cancel) | Err(_) => {
+                    verdict = Verdict::Drop;
+                    warn!("could not prompt using default verdict {:?}", verdict);
+                }
+            };
+            self.rules.add(Rule {
+                app_path: pkt.exe.clone(),
+                address: Some(pkt.dest_addr.ip()),
+                port: Some(pkt.dest_addr.port()),
+                protocol: Some(pkt.protocol.to_string()),
+                verdict: verdict.clone(),
+            });
+        }
+        info!(
+            "verdict for {} connection by '{}' to '{}' is {:#?}",
+            pkt.protocol, process_name, dest, verdict
+        );
+        verdict
+    }
+
     pub fn run(&mut self) -> std::io::Result<()> {
         let mut queue = Queue::open().unwrap();
         queue.bind(0)?;
@@ -56,62 +110,14 @@ impl AppWall {
             match TrafficPacket::from(payload) {
                 Err(msg) => warn!("error {} occurred while parsing: {:#?}", msg, payload),
                 Ok(mut pkt) => {
-                    if pkt.dns_data.is_empty() {
-                        let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr.ip()) {
-                            hostname.get(0).unwrap().to_string()
-                        } else {
-                            pkt.dest_addr.to_string()
-                        };
-                        let process_name: String = if let Some(ref name) = pkt.exe {
-                            name.into()
-                        } else {
-                            if pkt.src_addr.port() == 53 {
-                                debug!("ignoring the pkt as it is dns answer");
-                            } else {
-                                warn!("could not find process name {:#?}", pkt);
-                                warn!("payload {:#?}", payload);
-                            }
-                            "unknown".into()
-                        };
-                        info!(
-                            "{} connection by '{}' to '{}'",
-                            pkt.protocol, process_name, dest,
-                        );
-
-                        if let Some(pkt_verdict) = self.rules.get_verdict(&pkt) {
-                            verdict = pkt_verdict;
-                        } else {
-                            match dialog::Question::new(&format!(
-                                "accept {} connection by '{}' to '{}'",
-                                pkt.protocol, process_name, dest,
-                            ))
-                            .title("Firewall")
-                            .show()
-                            {
-                                Ok(dialog::Choice::Yes) => {
-                                    verdict = Verdict::Accept;
-                                }
-                                Ok(dialog::Choice::No) => {
-                                    verdict = Verdict::Drop;
-                                }
-                                Ok(dialog::Choice::Cancel)|
-                                Err(_) => {
-                                    warn!("could not prompt using default verdict {:?}", verdict);
-                                }
-                            };
-                            self.rules.add(Rule {
-                                app_path: pkt.exe.clone(),
-                                address: Some(pkt.dest_addr.ip()),
-                                port: Some(pkt.dest_addr.port()),
-                                protocol: Some(pkt.protocol.to_string()),
-                                verdict: verdict.clone(),
-                            });
-                        }
-                    } else {
+                    verdict = if !pkt.dns_data.is_empty() {
                         for (hostname, ip) in pkt.dns_data.drain(..) {
                             info!("hostname '{}' maps to '{}'", hostname, ip);
                             self.dns.add(ip, hostname);
                         }
+                        Verdict::Accept
+                    } else {
+                        self.apply_rules(&pkt)
                     }
                 }
             }
