@@ -160,17 +160,31 @@ impl TrafficPacket {
         None
     }
 
+    fn find_network_file(protocol: &'static str, is_ipv6: bool) -> &'static str {
+        match (protocol, is_ipv6) {
+            ("udp", true) => "/proc/net/udp6",
+            ("udp", false) => "/proc/net/udp",
+            ("tcp", true) => "/proc/net/tcp6",
+            ("tcp", false) => "/proc/net/tcp",
+            _ => {
+                let dummy = "/dev/null";
+                warn!(
+                    "ipv{} packet with protocol {} using {} to avoid process detection",
+                    if is_ipv6 { 4 } else { 6 },
+                    protocol,
+                    dummy
+                );
+                dummy
+            }
+        }
+    }
+
     fn find_pid(
         src_addr: &SocketAddr,
         dest_addr: &SocketAddr,
         protocol: &'static str,
     ) -> Option<u32> {
-        let filename = if dest_addr.is_ipv6() {
-            format!("/proc/net/{}6", protocol)
-        } else {
-            format!("/proc/net/{}", protocol)
-        };
-
+        let filename = Self::find_network_file(protocol, dest_addr.is_ipv6());
         let proc_net_text = Self::to_proc_net_text(src_addr, dest_addr);
         let file = File::open(filename).unwrap();
         let mut reader = BufReader::new(file);
