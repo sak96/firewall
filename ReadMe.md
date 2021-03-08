@@ -25,8 +25,15 @@ The basic flow of the application is as follows:
 
 ## TODO
 
-- [ ] Add logging to enable debugging.
-- [ ] Add tests to enable maintainability.
+- [x] Add logging to enable debugging.
+- [ ] Use multi-threading or async[2] approach.
 - [ ] Add rules interface and expose it to user.
+  - [ ] allow to add new rules.
+  - [ ] modifying existing rules.
+  - [ ] save and restore rules.
+- [ ] Add tests to enable maintainability.
+  - [ ] for parsing of basic packets.
+  - [ ] for checking for finding pid/process names.
 
 [1]: https://superuser.com/a/34784 "so: how to get pid for socket"
+[2]: https://web.archive.org/web/20210205020030/https://www.zupzup.org/epoll-with-rust/index.html "Epoll in rust"
