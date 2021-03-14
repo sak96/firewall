@@ -13,12 +13,10 @@ fn main() {
     let mut srv = service::AppWall::default();
     let daemon = daemonize::Daemonize::new()
         .stderr(log) // env_logger logs to stderr
-        .privileged_action(|| service::AppWall::start())
         .user("root")
-        .group("root")
-        .exit_action(|| service::AppWall::stop());
+        .group("root");
 
     if daemon.start().is_ok() {
-        srv.run().unwrap();
+        srv.run();
     }
 }

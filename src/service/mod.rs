@@ -7,7 +7,10 @@ use dns::DnsCache;
 use nfq::{Queue, Verdict};
 use packet::TrafficPacket;
 use rules::{Rule, Rules};
+use signal_hook::{consts::SIGTERM, flag};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 const IPTABLES_RULES: [&str; 3] = [
     // Get DNS responses
@@ -22,6 +25,7 @@ const IPTABLES_RULES: [&str; 3] = [
 pub struct AppWall {
     dns: DnsCache,
     rules: Rules,
+    terminate: Arc<AtomicBool>,
 }
 
 impl AppWall {
@@ -33,13 +37,8 @@ impl AppWall {
             .unwrap();
     }
 
-    pub fn start() {
+    fn add_rules(&mut self) {
         for rule in IPTABLES_RULES.iter() {
-            // clean the rule
-            Self::run_iptables_rule("iptables", "-D", rule);
-            Self::run_iptables_rule("ip6tables", "-D", rule);
-
-            // add the rule
             Self::run_iptables_rule("iptables", "-I", rule);
             Self::run_iptables_rule("ip6tables", "-I", rule);
         }
@@ -85,10 +84,21 @@ impl AppWall {
         verdict
     }
 
-    pub fn run(&mut self) -> std::io::Result<()> {
+    pub fn run(&mut self) {
+        if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
+            self.clear_rules();
+            self.add_rules();
+            if let Err(msg) = self.run_loop() {
+                warn!("run loop failed due to {}", msg);
+            };
+            self.clear_rules();
+        }
+    }
+
+    fn run_loop(&mut self) -> std::io::Result<()> {
         let mut queue = Queue::open().unwrap();
         queue.bind(0)?;
-        loop {
+        while !self.terminate.load(Ordering::Relaxed) {
             let mut verdict = Verdict::Accept;
             let mut msg = queue.recv()?;
             msg.get_payload();
@@ -109,14 +119,11 @@ impl AppWall {
             }
             msg.set_verdict(verdict);
             queue.verdict(msg)?;
-            if false {
-                break;
-            }
         }
         Ok(())
     }
 
-    pub fn stop() {
+    fn clear_rules(&self) {
         for rule in IPTABLES_RULES.iter() {
             Self::run_iptables_rule("iptables", "-D", rule);
             Self::run_iptables_rule("ip6tables", "-D", rule);
