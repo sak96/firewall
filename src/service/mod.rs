@@ -1,3 +1,4 @@
+mod config;
 mod dns;
 mod iptables;
 mod packet;
@@ -60,13 +61,18 @@ impl AppWall {
         verdict
     }
 
-    fn setup_logger() {
-        let env = env_logger::Env::default().default_filter_or("info");
+    fn setup_logger(level: &str) {
+        let env = env_logger::Env::default().default_filter_or(level);
         env_logger::init_from_env(env);
     }
 
     pub fn run(&mut self) {
-        let log = std::fs::File::create("/tmp/firewall.log").unwrap();
+        let config = config::Config::load("firewall.ini");
+        let log = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(config.get_log_file())
+            .unwrap();
         let daemon = daemonize::Daemonize::new()
             .stderr(log) // env_logger logs to stderr
             .user("root")
@@ -74,7 +80,7 @@ impl AppWall {
 
         if daemon.start().is_ok() {
             if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
-                Self::setup_logger();
+                Self::setup_logger(&config.get_log_level());
                 iptables::clear_rules();
                 iptables::add_rules();
                 if let Err(msg) = self.run_loop() {
