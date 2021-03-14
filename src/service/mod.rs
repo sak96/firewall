@@ -66,14 +66,22 @@ impl AppWall {
     }
 
     pub fn run(&mut self) {
-        if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
-            Self::setup_logger();
-            iptables::clear_rules();
-            iptables::add_rules();
-            if let Err(msg) = self.run_loop() {
-                warn!("run loop failed due to {}", msg);
-            };
-            iptables::clear_rules();
+        let log = std::fs::File::create("/tmp/firewall.log").unwrap();
+        let daemon = daemonize::Daemonize::new()
+            .stderr(log) // env_logger logs to stderr
+            .user("root")
+            .group("root");
+
+        if daemon.start().is_ok() {
+            if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
+                Self::setup_logger();
+                iptables::clear_rules();
+                iptables::add_rules();
+                if let Err(msg) = self.run_loop() {
+                    warn!("run loop failed due to {}", msg);
+                };
+                iptables::clear_rules();
+            }
         }
     }
 
