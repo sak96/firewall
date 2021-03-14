@@ -60,8 +60,14 @@ impl AppWall {
         verdict
     }
 
+    fn setup_logger() {
+        let env = env_logger::Env::default().default_filter_or("info");
+        env_logger::init_from_env(env);
+    }
+
     pub fn run(&mut self) {
         if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
+            Self::setup_logger();
             iptables::clear_rules();
             iptables::add_rules();
             if let Err(msg) = self.run_loop() {
