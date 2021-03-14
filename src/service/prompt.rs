@@ -1,25 +1,11 @@
-use dialog::DialogBox;
 use nfq::Verdict;
+use tinyfiledialogs::{message_box_yes_no, MessageBoxIcon::Question, YesNo};
 
-const DEFAULT_VERDICT: Verdict = Verdict::Drop;
+const DEFAULT_CHOICE: YesNo = YesNo::Yes;
 
 pub fn prompt_verdict(msg: &str) -> Verdict {
-    match dialog::Question::new(msg)
-    .title("Firewall")
-    .show()
-    {
-        Ok(dialog::Choice::Yes) => {
-            Verdict::Accept
-        }
-        Ok(dialog::Choice::No) => {
-            Verdict::Drop
-        }
-        Ok(dialog::Choice::Cancel) | Err(_) => {
-            warn!(
-                "could not prompt using default verdict {:?}",
-                DEFAULT_VERDICT
-            );
-            DEFAULT_VERDICT
-        }
+    match message_box_yes_no("Firewall", &msg, Question, DEFAULT_CHOICE) {
+        YesNo::Yes => Verdict::Accept,
+        YesNo::No => Verdict::Drop,
     }
 }
