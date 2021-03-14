@@ -11,6 +11,9 @@ nfq = "0.2"
 dns-parser = "0.8"
 etherparse = "0.9"
 glob = "0.3.0"
-log = "0.4.0"
-env_logger = "0.8.3"
 dialog = "0.3.0"
+log = "*"
+
+[dependencies.env_logger]
+version = "0.8.3"
+default-features = false
