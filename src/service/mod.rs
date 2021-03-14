@@ -33,7 +33,7 @@ impl AppWall {
             .unwrap();
     }
 
-    pub fn start(&self) {
+    pub fn start() {
         for rule in IPTABLES_RULES.iter() {
             // clean the rule
             Self::run_iptables_rule("iptables", "-D", rule);
@@ -116,7 +116,7 @@ impl AppWall {
         Ok(())
     }
 
-    pub fn stop(&self) {
+    pub fn stop() {
         for rule in IPTABLES_RULES.iter() {
             Self::run_iptables_rule("iptables", "-D", rule);
             Self::run_iptables_rule("ip6tables", "-D", rule);
