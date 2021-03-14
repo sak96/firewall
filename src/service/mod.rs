@@ -1,8 +1,8 @@
 mod dns;
 mod packet;
+mod prompt;
 mod rules;
 
-use dialog::DialogBox;
 use dns::DnsCache;
 use nfq::{Queue, Verdict};
 use packet::TrafficPacket;
@@ -66,24 +66,10 @@ impl AppWall {
         if let Some(pkt_verdict) = self.rules.get_verdict(&pkt) {
             verdict = pkt_verdict;
         } else {
-            match dialog::Question::new(&format!(
+            verdict = prompt::prompt_verdict(&format!(
                 "accept {} connection by '{}' to '{}'",
                 pkt.protocol, process_name, dest,
-            ))
-            .title("Firewall")
-            .show()
-            {
-                Ok(dialog::Choice::Yes) => {
-                    verdict = Verdict::Accept;
-                }
-                Ok(dialog::Choice::No) => {
-                    verdict = Verdict::Drop;
-                }
-                Ok(dialog::Choice::Cancel) | Err(_) => {
-                    verdict = Verdict::Drop;
-                    warn!("could not prompt using default verdict {:?}", verdict);
-                }
-            };
+            ));
             self.rules.add(Rule {
                 app_path: pkt.exe.clone(),
                 address: Some(pkt.dest_addr.ip()),
