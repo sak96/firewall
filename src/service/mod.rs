@@ -1,4 +1,5 @@
 mod dns;
+mod iptables;
 mod packet;
 mod prompt;
 mod rules;
@@ -8,18 +9,8 @@ use nfq::{Queue, Verdict};
 use packet::TrafficPacket;
 use rules::{Rule, Rules};
 use signal_hook::{consts::SIGTERM, flag};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-
-const IPTABLES_RULES: [&str; 3] = [
-    // Get DNS responses
-    "INPUT --protocol udp --sport 53 -j NFQUEUE --queue-num 0 --queue-bypass",
-    // Get connection packets
-    "OUTPUT -t mangle -m conntrack --ctstate NEW,RELATED -j NFQUEUE --queue-num 0 --queue-bypass",
-    // Reject packets marked
-    "OUTPUT --protocol tcp -m mark --mark 1 -j REJECT",
-];
 
 #[derive(Default)]
 pub struct AppWall {
@@ -29,21 +20,6 @@ pub struct AppWall {
 }
 
 impl AppWall {
-    fn run_iptables_rule(iptables: &str, operation: &str, rule: &str) {
-        debug!("executing: {} {} {}", iptables, operation, rule);
-        Command::new(iptables)
-            .args(std::iter::once(operation).chain(rule.split_whitespace()))
-            .output()
-            .unwrap();
-    }
-
-    fn add_rules(&mut self) {
-        for rule in IPTABLES_RULES.iter() {
-            Self::run_iptables_rule("iptables", "-I", rule);
-            Self::run_iptables_rule("ip6tables", "-I", rule);
-        }
-    }
-
     fn apply_rules(&mut self, pkt: &TrafficPacket) -> Verdict {
         let verdict;
         let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr.ip()) {
@@ -86,12 +62,12 @@ impl AppWall {
 
     pub fn run(&mut self) {
         if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
-            self.clear_rules();
-            self.add_rules();
+            iptables::clear_rules();
+            iptables::add_rules();
             if let Err(msg) = self.run_loop() {
                 warn!("run loop failed due to {}", msg);
             };
-            self.clear_rules();
+            iptables::clear_rules();
         }
     }
 
@@ -121,12 +97,5 @@ impl AppWall {
             queue.verdict(msg)?;
         }
         Ok(())
-    }
-
-    fn clear_rules(&self) {
-        for rule in IPTABLES_RULES.iter() {
-            Self::run_iptables_rule("iptables", "-D", rule);
-            Self::run_iptables_rule("ip6tables", "-D", rule);
-        }
     }
 }
