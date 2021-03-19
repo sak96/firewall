@@ -13,10 +13,17 @@ pub struct Rule {
 
 impl Rule {
     pub fn applies_to(&self, packet: &TrafficPacket) -> bool {
-        (self.app_path.is_none() || packet.exe.is_none() || self.app_path.eq(&packet.exe))
-            && (self.address.is_none() || self.address.unwrap().eq(&packet.dest_addr.ip()))
-            && (self.port.is_some() || self.port.unwrap().eq(&packet.dest_addr.port()))
-            && (self.protocol.is_some() || self.protocol.as_ref().unwrap().eq(&packet.protocol))
+        if packet.exe.is_some() && self.app_path.is_some() && self.app_path.ne(&packet.exe) {
+            false
+        } else if self.address.is_some() && self.address.unwrap().ne(&packet.dest_addr.ip()) {
+            false
+        } else if self.port.is_some() && self.port.unwrap().ne(&packet.dest_addr.port()) {
+            false
+        } else if self.protocol.is_some() && self.protocol.as_ref().unwrap().ne(&packet.protocol) {
+            false
+        } else {
+            true
+        }
     }
 
     pub fn get_verdict(&self) -> Verdict {
