@@ -40,6 +40,9 @@ impl Rules {
     }
 
     pub fn get_verdict(&self, packet: &TrafficPacket) -> Option<Verdict> {
+        if packet.exe.is_none() {
+            return Some(Verdict::Drop);
+        }
         for rule in &self.0 {
             if rule.applies_to(&packet) {
                 return Some(rule.get_verdict());
