@@ -22,4 +22,16 @@ impl Config {
             .get("LOG", "file")
             .unwrap_or("/tmp/firewall.log".into())
     }
+
+    pub fn get_rules(&self) -> Option<Vec<String>> {
+        println!("{:?}", self.config.get_map_ref());
+        Some(
+            self.config
+                .get_map_ref()
+                .get("rules")?
+                .keys()
+                .map(|a| a.clone())
+                .collect(),
+        )
+    }
 }

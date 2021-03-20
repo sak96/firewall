@@ -1,8 +1,9 @@
 use nfq::Verdict;
-use std::net::IpAddr;
+use std::{net::IpAddr, str::FromStr};
 
 use super::packet::TrafficPacket;
 
+#[derive(Debug)]
 pub struct Rule {
     pub app_path: Option<String>,
     pub address: Option<IpAddr>,
@@ -31,7 +32,65 @@ impl Rule {
     }
 }
 
-#[derive(Default)]
+const INSUFFICIENT_SPLITS: &'static str = "insufficient splits";
+const IP_ADDR_PARSE_FAILED: &'static str = "ip address parse failed";
+const PORT_PARSE_FAILED: &'static str = "port parse failed";
+
+impl FromStr for Rule {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut p = s.split(",");
+
+        let app_path = p.next().ok_or(INSUFFICIENT_SPLITS)?.trim();
+        let app_path = if app_path.is_empty() {
+            None
+        } else {
+            Some(app_path.to_string())
+        };
+
+        let address = p.next().ok_or(INSUFFICIENT_SPLITS)?.trim();
+        let address = if address.is_empty() {
+            None
+        } else {
+            Some(
+                address
+                    .parse::<IpAddr>()
+                    .map_err(|_| IP_ADDR_PARSE_FAILED)?,
+            )
+        };
+
+        let port = p.next().ok_or(INSUFFICIENT_SPLITS)?.trim();
+        let port = if port.is_empty() {
+            None
+        } else {
+            Some(port.parse::<u16>().map_err(|_| PORT_PARSE_FAILED)?)
+        };
+
+        let protocol = p.next().ok_or(INSUFFICIENT_SPLITS)?.trim();
+        let protocol = if protocol.is_empty() {
+            None
+        } else {
+            Some(protocol.to_string())
+        };
+
+        let verdict = p.next().ok_or(INSUFFICIENT_SPLITS)?.trim();
+        let verdict = if verdict.to_lowercase().eq("accept") {
+            Verdict::Accept
+        } else {
+            Verdict::Drop
+        };
+        Ok(Self {
+            app_path,
+            address,
+            port,
+            protocol,
+            verdict,
+        })
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct Rules(Vec<Rule>);
 
 impl Rules {
@@ -49,5 +108,20 @@ impl Rules {
             }
         }
         None
+    }
+
+    pub fn from_text(rules: &[String]) -> Self {
+        let rules = rules
+            .iter()
+            .filter_map(|r| {
+                r.parse::<Rule>()
+                    .map_err(|err| {
+                        warn!("{}: failed to parse rule {}", err, r);
+                        err
+                    })
+                    .ok()
+            })
+            .collect();
+        Self { 0: rules }
     }
 }

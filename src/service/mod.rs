@@ -66,6 +66,13 @@ impl AppWall {
         env_logger::init_from_env(env);
     }
 
+    fn setup_rules(&mut self, config: &config::Config) {
+        if let Some(rules) = config.get_rules() {
+            self.rules = Rules::from_text(&rules);
+            debug!("following rules added.\n{:?}", self.rules);
+        }
+    }
+
     pub fn run(&mut self) {
         let config = config::Config::load("firewall.ini");
         let log = std::fs::OpenOptions::new()
@@ -81,6 +88,7 @@ impl AppWall {
         if daemon.start().is_ok() {
             if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
                 Self::setup_logger(&config.get_log_level());
+                self.setup_rules(&config);
                 iptables::clear_rules();
                 iptables::add_rules();
                 if let Err(msg) = self.run_loop() {
