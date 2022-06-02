@@ -14,33 +14,31 @@ pub struct Rule {
 
 impl Rule {
     pub fn applies_to(&self, packet: &TrafficPacket) -> bool {
-        if packet.exe.is_some() && self.app_path.is_some() && self.app_path.ne(&packet.exe) {
-            false
-        } else if self.address.is_some() && self.address.unwrap().ne(&packet.dest_addr.ip()) {
-            false
-        } else if self.port.is_some() && self.port.unwrap().ne(&packet.dest_addr.port()) {
-            false
-        } else if self.protocol.is_some() && self.protocol.as_ref().unwrap().ne(&packet.protocol) {
-            false
-        } else {
-            true
-        }
+        !(packet.exe.is_some()
+            && self.app_path.is_some()
+            && self.app_path.ne(&packet.exe)
+            && self.address.is_some()
+            && self.address.unwrap().ne(&packet.dest_addr.ip())
+            && self.port.is_some()
+            && self.port.unwrap().ne(&packet.dest_addr.port())
+            && self.protocol.is_some()
+            && self.protocol.as_ref().unwrap().ne(&packet.protocol))
     }
 
     pub fn get_verdict(&self) -> Verdict {
-        self.verdict.clone()
+        self.verdict
     }
 }
 
-const INSUFFICIENT_SPLITS: &'static str = "insufficient splits";
-const IP_ADDR_PARSE_FAILED: &'static str = "ip address parse failed";
-const PORT_PARSE_FAILED: &'static str = "port parse failed";
+const INSUFFICIENT_SPLITS: &str = "insufficient splits";
+const IP_ADDR_PARSE_FAILED: &str = "ip address parse failed";
+const PORT_PARSE_FAILED: &str = "port parse failed";
 
 impl FromStr for Rule {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut p = s.split(",");
+        let mut p = s.split(',');
 
         let app_path = p.next().ok_or(INSUFFICIENT_SPLITS)?.trim();
         let app_path = if app_path.is_empty() {
@@ -103,7 +101,7 @@ impl Rules {
             return Some(Verdict::Drop);
         }
         for rule in &self.0 {
-            if rule.applies_to(&packet) {
+            if rule.applies_to(packet) {
                 return Some(rule.get_verdict());
             }
         }
@@ -122,6 +120,6 @@ impl Rules {
                     .ok()
             })
             .collect();
-        Self { 0: rules }
+        Self(rules)
     }
 }

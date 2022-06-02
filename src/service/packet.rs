@@ -29,7 +29,7 @@ impl TrafficPacket {
                 if hostname == "." {
                     continue;
                 }
-                let hostname = hostname.trim_end_matches(".");
+                let hostname = hostname.trim_end_matches('.');
                 match response.data {
                     RData::A(rdata::a::Record(ip)) => {
                         dns_data.push((hostname.into(), IpAddr::V4(ip)));
@@ -54,9 +54,7 @@ impl TrafficPacket {
                 IpAddr::V6(ip.source_addr()),
                 IpAddr::V6(ip.destination_addr()),
             )),
-            None => {
-                return Err("could not parse ip layer".into());
-            }
+            None => Err("could not parse ip layer".into()),
         }
     }
 
@@ -68,9 +66,7 @@ impl TrafficPacket {
             Some(TransportSlice::Tcp(tcp)) => {
                 Ok((tcp.source_port(), tcp.destination_port(), "tcp"))
             }
-            None => {
-                return Err("could not parse transport layer".into());
-            }
+            None => Err("could not parse transport layer".into()),
         }
     }
 
@@ -81,7 +77,7 @@ impl TrafficPacket {
                 let (src_port, dest_port, protocol) = Self::get_ports_from_packet(&pkt)?;
                 let dest_addr = SocketAddr::new(dest_ip, dest_port);
                 let src_addr = SocketAddr::new(src_ip, src_port);
-                let pid = Self::find_pid(&src_addr, &dest_addr, &protocol).unwrap_or(0);
+                let pid = Self::find_pid(&src_addr, &dest_addr, protocol).unwrap_or(0);
                 let exe = Self::find_name_from_pid(pid);
 
                 let dns_data = Self::parse_dns(pkt.payload);
@@ -112,8 +108,7 @@ impl TrafficPacket {
             IpAddr::V6(ipv6) => ipv6
                 .octets()
                 .chunks(4)
-                .map(|a| a.iter().rev())
-                .flatten()
+                .flat_map(|a| a.iter().rev())
                 .fold(String::new(), |string, &oct| {
                     format!("{}{:02X?}", string, oct)
                 }),
@@ -132,15 +127,13 @@ impl TrafficPacket {
 
     fn get_pid_of_inode(inode: &str) -> Option<u32> {
         let link_name = format!("socket:[{}]", inode);
-        for entry in glob(Self::FILE_DESCRIPTOR_GLOB).ok()? {
-            if let Ok(path) = entry {
-                if let Ok(path_buf) = path.read_link() {
-                    if path_buf.to_str()? == link_name.as_str() {
-                        return path.iter().nth(2)?.to_str()?.parse().ok();
-                    }
-                } else {
-                    debug!("could not read link for {}", path.display());
+        for entry in (glob(Self::FILE_DESCRIPTOR_GLOB).ok()?).flatten() {
+            if let Ok(path_buf) = entry.read_link() {
+                if path_buf.to_str()? == link_name.as_str() {
+                    return path_buf.iter().nth(2)?.to_str()?.parse().ok();
                 }
+            } else {
+                debug!("could not read link for {}", entry.display());
             }
         }
         warn!("could not find socket {}", link_name);
@@ -190,7 +183,7 @@ impl TrafficPacket {
         let mut reader = BufReader::new(file);
         let mut line = String::new();
         while reader.read_line(&mut line).unwrap() != 0 {
-            let content = line.trim_start().splitn(2, " ").last()?;
+            let content = line.trim_start().splitn(2, ' ').last()?;
             if content.starts_with(&proc_net_text) {
                 let inode = line.trim_start().split_whitespace().nth(9).unwrap();
                 let pid = Self::get_pid_of_inode(inode)?;

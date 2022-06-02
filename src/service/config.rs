@@ -14,13 +14,13 @@ impl Config {
     }
 
     pub fn get_log_level(&self) -> String {
-        self.config.get("LOG", "level").unwrap_or("info".into())
+        self.config.get("LOG", "level").unwrap_or_else(|| "info".into())
     }
 
     pub fn get_log_file(&self) -> String {
         self.config
             .get("LOG", "file")
-            .unwrap_or("/tmp/firewall.log".into())
+            .unwrap_or_else(|| "/tmp/firewall.log".into())
     }
 
     pub fn get_rules(&self) -> Option<Vec<String>> {
@@ -30,7 +30,7 @@ impl Config {
                 .get_map_ref()
                 .get("rules")?
                 .keys()
-                .map(|a| a.clone())
+                .cloned()
                 .collect(),
         )
     }

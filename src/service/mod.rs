@@ -39,7 +39,7 @@ impl AppWall {
             "unknown".into()
         };
 
-        if let Some(pkt_verdict) = self.rules.get_verdict(&pkt) {
+        if let Some(pkt_verdict) = self.rules.get_verdict(pkt) {
             verdict = pkt_verdict;
         } else {
             verdict = prompt::prompt_verdict(&format!(
@@ -51,7 +51,7 @@ impl AppWall {
                 address: Some(pkt.dest_addr.ip()),
                 port: Some(pkt.dest_addr.port()),
                 protocol: Some(pkt.protocol.to_string()),
-                verdict: verdict.clone(),
+                verdict,
             });
         }
         info!(
@@ -85,17 +85,15 @@ impl AppWall {
             .user("root")
             .group("root");
 
-        if daemon.start().is_ok() {
-            if flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
-                Self::setup_logger(&config.get_log_level());
-                self.setup_rules(&config);
-                iptables::clear_rules();
-                iptables::add_rules();
-                if let Err(msg) = self.run_loop() {
-                    warn!("run loop failed due to {}", msg);
-                };
-                iptables::clear_rules();
-            }
+        if daemon.start().is_ok() && flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
+            Self::setup_logger(&config.get_log_level());
+            self.setup_rules(&config);
+            iptables::clear_rules();
+            iptables::add_rules();
+            if let Err(msg) = self.run_loop() {
+                warn!("run loop failed due to {}", msg);
+            };
+            iptables::clear_rules();
         }
     }
 
