@@ -130,7 +130,7 @@ impl TrafficPacket {
         for entry in (glob(Self::FILE_DESCRIPTOR_GLOB).ok()?).flatten() {
             if let Ok(path_buf) = entry.read_link() {
                 if path_buf.to_str()? == link_name.as_str() {
-                    return path_buf.iter().nth(2)?.to_str()?.parse().ok();
+                    return entry.iter().nth(2)?.to_str()?.parse().ok();
                 }
             } else {
                 debug!("could not read link for {}", entry.display());
