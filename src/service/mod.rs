@@ -12,19 +12,39 @@ use rules::{Rule, Rules};
 use signal_hook::{consts::SIGTERM, flag};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use trust_dns_resolver::TokioAsyncResolver;
 
-#[derive(Default)]
 pub struct AppWall {
     dns: DnsCache,
     rules: Rules,
     terminate: Arc<AtomicBool>,
+    resolver: TokioAsyncResolver,
 }
 
 impl AppWall {
-    fn apply_rules(&mut self, pkt: &TrafficPacket) -> Verdict {
+    pub fn new(resolver: TokioAsyncResolver) -> Self {
+        Self {
+            dns: Default::default(),
+            rules: Default::default(),
+            terminate: Default::default(),
+            resolver,
+        }
+    }
+    async fn apply_rules(&mut self, pkt: &TrafficPacket) -> Verdict {
         let verdict;
         let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr.ip()) {
             hostname.get(0).unwrap().to_string()
+        } else if let Some(address) = self
+            .resolver
+            .reverse_lookup(pkt.dest_addr.ip())
+            .await
+            .iter()
+            .next()
+        {
+            let name = address.query().name().to_string();
+            dbg!("finally a reverse lookup", &name);
+            self.dns.add(pkt.dest_addr.ip(), name.clone());
+            name
         } else {
             pkt.dest_addr.to_string()
         };
@@ -73,7 +93,7 @@ impl AppWall {
         }
     }
 
-    pub fn run(&mut self) {
+    pub async fn run(&mut self) {
         let config = config::Config::load("firewall.ini");
         let log = std::fs::OpenOptions::new()
             .append(true)
@@ -90,14 +110,14 @@ impl AppWall {
             self.setup_rules(&config);
             iptables::clear_rules();
             iptables::add_rules();
-            if let Err(msg) = self.run_loop() {
+            if let Err(msg) = self.run_loop().await {
                 warn!("run loop failed due to {}", msg);
             };
             iptables::clear_rules();
         }
     }
 
-    fn run_loop(&mut self) -> std::io::Result<()> {
+    async fn run_loop(&mut self) -> std::io::Result<()> {
         let mut queue = Queue::open().unwrap();
         queue.bind(0)?;
         while !self.terminate.load(Ordering::Relaxed) {
@@ -115,7 +135,7 @@ impl AppWall {
                         }
                         Verdict::Accept
                     } else {
-                        self.apply_rules(&pkt)
+                        self.apply_rules(&pkt).await
                     }
                 }
             }

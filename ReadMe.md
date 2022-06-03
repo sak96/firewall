@@ -34,6 +34,7 @@ The basic flow of the application is as follows:
 - [ ] Add tests to enable maintainability.
   - [ ] for parsing of basic packets.
   - [ ] for checking for finding pid/process names.
+- [X] Do reverse lookup if needed
 
 [1]: https://superuser.com/a/34784 "so: how to get pid for socket"
 [2]: https://web.archive.org/web/20210205020030/https://www.zupzup.org/epoll-with-rust/index.html "Epoll in rust"
