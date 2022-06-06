@@ -10,13 +10,12 @@ license = "GPL-3.0-or-later"
 nfq = "0.2"
 trust-dns-resolver = "0.21.2"
 dns-parser = "0.8"
-tokio = {version =  "1.18.2", features = ["rt", "macros"]}
+tokio = {version =  "1.18.2", features = ["rt", "macros", "sync", "signal"]}
 etherparse = "0.9"
 glob = "0.3.0"
 tinyfiledialogs = "3.3.10"
 log = "*"
 daemonize = "0.4.1"
-signal-hook = "0.3.7"
 configparser = "2.0.0"
 
 [dependencies.env_logger]

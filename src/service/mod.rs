@@ -9,24 +9,30 @@ use dns::DnsCache;
 use nfq::{Queue, Verdict};
 use packet::TrafficPacket;
 use rules::{Rule, Rules};
-use signal_hook::{consts::SIGTERM, flag};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use tokio::sync::oneshot::Receiver as OneShotReceiver;
 use trust_dns_resolver::TokioAsyncResolver;
 
 pub struct AppWall {
     dns: DnsCache,
     rules: Rules,
-    terminate: Arc<AtomicBool>,
+    terminate: OneShotReceiver<()>,
     resolver: TokioAsyncResolver,
 }
 
 impl AppWall {
     pub fn new(resolver: TokioAsyncResolver) -> Self {
+        // setup ctrl c handler
+        let (ctrl_c_handler, terminate) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.unwrap();
+            debug!("handling ctrl c");
+            ctrl_c_handler.send(()).unwrap();
+        });
+
         Self {
             dns: Default::default(),
             rules: Default::default(),
-            terminate: Default::default(),
+            terminate,
             resolver,
         }
     }
@@ -93,7 +99,7 @@ impl AppWall {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(mut self) {
         let config = config::Config::load("firewall.ini");
         let log = std::fs::OpenOptions::new()
             .append(true)
@@ -105,7 +111,7 @@ impl AppWall {
             .user("root")
             .group("root");
 
-        if daemon.start().is_ok() && flag::register(SIGTERM, Arc::clone(&self.terminate)).is_ok() {
+        if daemon.start().is_ok() {
             Self::setup_logger(&config.get_log_level());
             self.setup_rules(&config);
             iptables::clear_rules();
@@ -117,10 +123,10 @@ impl AppWall {
         }
     }
 
-    async fn run_loop(&mut self) -> std::io::Result<()> {
+    async fn run_loop(mut self) -> std::io::Result<()> {
         let mut queue = Queue::open().unwrap();
         queue.bind(0)?;
-        while !self.terminate.load(Ordering::Relaxed) {
+        while self.terminate.try_recv().is_err() {
             let mut verdict = Verdict::Accept;
             let mut msg = queue.recv()?;
             msg.get_payload();
