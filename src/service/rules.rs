@@ -1,4 +1,5 @@
 use nfq::Verdict;
+use std::sync::{Arc, Mutex};
 use std::{net::IpAddr, str::FromStr};
 
 use super::packet::TrafficPacket;
@@ -89,18 +90,19 @@ impl FromStr for Rule {
 }
 
 #[derive(Default, Debug)]
-pub struct Rules(Vec<Rule>);
+pub struct Rules(Arc<Mutex<Vec<Rule>>>);
 
 impl Rules {
     pub fn add(&mut self, rule: Rule) {
-        self.0.push(rule)
+        self.0.lock().expect("lock poisoned").push(rule)
     }
 
     pub fn get_verdict(&self, packet: &TrafficPacket) -> Option<Verdict> {
         if packet.exe.is_none() {
             return Some(Verdict::Drop);
         }
-        for rule in &self.0 {
+        let rules = &self.0.lock().expect("lock poisoned");
+        for rule in rules.iter() {
             if rule.applies_to(packet) {
                 return Some(rule.get_verdict());
             }
@@ -120,6 +122,6 @@ impl Rules {
                     .ok()
             })
             .collect();
-        Self(rules)
+        Self(Arc::new(Mutex::new(rules)))
     }
 }

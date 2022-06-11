@@ -52,6 +52,21 @@ impl AppWall {
             self.dns.add(pkt.dest_addr.ip(), name.clone());
             name
         } else {
+            let mut dns = self.dns.clone();
+            let resolver = self.resolver.clone();
+            let ip = pkt.dest_addr.ip();
+            tokio::spawn(async move {
+                if let Some(address) = resolver
+                    .reverse_lookup(ip)
+                    .await
+                    .iter()
+                    .next()
+                {
+                    let name = address.query().name().to_string();
+                    dbg!("finally a reverse lookup", &name);
+                    dns.add(ip, name);
+                }
+            });
             pkt.dest_addr.to_string()
         };
         let process_name: String = if let Some(ref name) = pkt.exe {
