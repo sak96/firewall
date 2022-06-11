@@ -7,7 +7,7 @@ edition = "2018"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-nfq = "0.2"
+nfq = { git = "https://github.com/avandenbussche/nfq-rs", branch = "master", features=["async"] }
 trust-dns-resolver = "0.21.2"
 dns-parser = "0.8"
 tokio = {version =  "1.18.2", features = ["rt", "macros", "sync", "signal"]}

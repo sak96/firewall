@@ -6,9 +6,10 @@ mod prompt;
 mod rules;
 
 use dns::DnsCache;
-use nfq::{Queue, Verdict};
+use nfq::{async_nfq::AsyncQueue, Queue, Verdict};
 use packet::TrafficPacket;
 use rules::{Rule, Rules};
+use tokio::sync::mpsc::channel;
 use tokio::sync::oneshot::Receiver as OneShotReceiver;
 use trust_dns_resolver::TokioAsyncResolver;
 
@@ -20,6 +21,8 @@ pub struct AppWall {
 }
 
 impl AppWall {
+    const MAX_PROCESSED_QUEUE_LENGTH: usize = 100;
+
     pub fn new(resolver: TokioAsyncResolver) -> Self {
         // setup ctrl c handler
         let (ctrl_c_handler, terminate) = tokio::sync::oneshot::channel();
@@ -36,12 +39,16 @@ impl AppWall {
             resolver,
         }
     }
-    async fn apply_rules(&mut self, pkt: &TrafficPacket) -> Verdict {
+    async fn apply_rules(
+        mut dns: DnsCache,
+        resolver: TokioAsyncResolver,
+        pkt: &TrafficPacket,
+        mut rules: Rules,
+    ) -> Verdict {
         let verdict;
-        let dest = if let Some(hostname) = self.dns.get(pkt.dest_addr.ip()) {
+        let dest = if let Some(hostname) = dns.get(pkt.dest_addr.ip()) {
             hostname.get(0).unwrap().to_string()
-        } else if let Some(address) = self
-            .resolver
+        } else if let Some(address) = resolver
             .reverse_lookup(pkt.dest_addr.ip())
             .await
             .iter()
@@ -49,19 +56,13 @@ impl AppWall {
         {
             let name = address.query().name().to_string();
             dbg!("finally a reverse lookup", &name);
-            self.dns.add(pkt.dest_addr.ip(), name.clone());
+            dns.add(pkt.dest_addr.ip(), name.clone());
             name
         } else {
-            let mut dns = self.dns.clone();
-            let resolver = self.resolver.clone();
+            let resolver = resolver.clone();
             let ip = pkt.dest_addr.ip();
             tokio::spawn(async move {
-                if let Some(address) = resolver
-                    .reverse_lookup(ip)
-                    .await
-                    .iter()
-                    .next()
-                {
+                if let Some(address) = resolver.reverse_lookup(ip).await.iter().next() {
                     let name = address.query().name().to_string();
                     dbg!("finally a reverse lookup", &name);
                     dns.add(ip, name);
@@ -80,14 +81,14 @@ impl AppWall {
             "unknown".into()
         };
 
-        if let Some(pkt_verdict) = self.rules.get_verdict(pkt) {
+        if let Some(pkt_verdict) = rules.get_verdict(pkt) {
             verdict = pkt_verdict;
         } else {
             verdict = prompt::prompt_verdict(&format!(
                 "accept {} connection by '{}' to '{}'",
                 pkt.protocol, process_name, dest,
             ));
-            self.rules.add(Rule {
+            rules.add(Rule {
                 app_path: pkt.exe.clone(),
                 address: Some(pkt.dest_addr.ip()),
                 port: Some(pkt.dest_addr.port()),
@@ -141,27 +142,41 @@ impl AppWall {
     async fn run_loop(mut self) -> std::io::Result<()> {
         let mut queue = Queue::open().unwrap();
         queue.bind(0)?;
+        let mut queue = AsyncQueue::new(queue)?;
+        let (processed_sender, mut processed_queue) = channel(Self::MAX_PROCESSED_QUEUE_LENGTH);
         while self.terminate.try_recv().is_err() {
-            let mut verdict = Verdict::Accept;
-            let mut msg = queue.recv()?;
-            msg.get_payload();
-            let payload = msg.get_payload();
-            match TrafficPacket::from(payload) {
-                Err(msg) => warn!("error {} occurred while parsing: {:#?}", msg, payload),
-                Ok(mut pkt) => {
-                    verdict = if !pkt.dns_data.is_empty() {
-                        for (hostname, ip) in pkt.dns_data.drain(..) {
-                            info!("hostname '{}' maps to '{}'", hostname, ip);
-                            self.dns.add(ip, hostname);
+            tokio::select! {
+                Some(msg) = processed_queue.recv() => {
+                    queue.verdict(msg).await?;
+                }
+                Ok(mut msg) = queue.recv() => {
+                    let mut verdict = Verdict::Accept;
+                    let mut dns = self.dns.clone();
+                    let resolver = self.resolver.clone();
+                    let rules = self.rules.clone();
+                    let processed_sender = processed_sender.clone();
+                    tokio::spawn(async move {
+                        msg.get_payload();
+                        let payload = msg.get_payload();
+                        match TrafficPacket::from(payload) {
+                            Err(msg) => warn!("error {} occurred while parsing: {:#?}", msg, payload),
+                            Ok(mut pkt) => {
+                                verdict = if !pkt.dns_data.is_empty() {
+                                    for (hostname, ip) in pkt.dns_data.drain(..) {
+                                        info!("hostname '{}' maps to '{}'", hostname, ip);
+                                        dns.add(ip, hostname);
+                                    }
+                                    Verdict::Accept
+                                } else {
+                                    Self::apply_rules(dns, resolver, &pkt, rules).await
+                                }
+                            }
                         }
-                        Verdict::Accept
-                    } else {
-                        self.apply_rules(&pkt).await
-                    }
+                        msg.set_verdict(verdict);
+                        processed_sender.send(msg).await.expect("poisoned lock");
+                    });
                 }
             }
-            msg.set_verdict(verdict);
-            queue.verdict(msg)?;
         }
         Ok(())
     }
