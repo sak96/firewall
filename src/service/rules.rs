@@ -89,7 +89,7 @@ impl FromStr for Rule {
     }
 }
 
-#[derive(Default,Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Rules(Arc<Mutex<Vec<Rule>>>);
 
 impl Rules {

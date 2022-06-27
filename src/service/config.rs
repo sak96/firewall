@@ -14,7 +14,9 @@ impl Config {
     }
 
     pub fn get_log_level(&self) -> String {
-        self.config.get("LOG", "level").unwrap_or_else(|| "info".into())
+        self.config
+            .get("LOG", "level")
+            .unwrap_or_else(|| "info".into())
     }
 
     pub fn get_log_file(&self) -> String {
