@@ -1,0 +1,2 @@
+let g:ale_rust_analyzer_config = {'cargo': {'target': 'bpfel-unknown-none'}, 'check': {'allTargets': v:false}}
+

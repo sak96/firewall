@@ -1,0 +1,2 @@
+[workspace]
+members = ["firewall-aya", "firewall-aya-common", "xtask"]
