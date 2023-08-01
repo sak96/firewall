@@ -34,10 +34,6 @@ async fn main() -> Result<(), anyhow::Error> {
     program.load()?;
     program.attach("security_socket_connect", 0)?;
 
-    let program: &mut KProbe = bpf.program_mut("kretprobe_security_socket_connect").unwrap().try_into()?;
-    program.load()?;
-    program.attach("security_socket_connect", 0)?;
-
     let program: &mut UProbe = bpf.program_mut("uprobe_dns_entry").unwrap().try_into()?;
     program.load()?;
     program.attach(Some("getaddrinfo"), 0, "libc", None)?;
