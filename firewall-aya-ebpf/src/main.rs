@@ -128,8 +128,6 @@ pub fn uprobe_dns_exit(ctx: ProbeContext) -> u32 {
 
 #[map]
 pub static mut HOSTNAME: PerCpuArray<Buf> = PerCpuArray::with_max_entries(1, 0);
-#[map(name = "DNS_EVENTS")]
-static mut DNS_EVENTS: PerfEventArray<()> = PerfEventArray::<()>::with_max_entries(1024, 0);
 
 fn try_uprobe_dns_exit(ctx: ProbeContext) -> Result<u32, i64> {
     let tid: u32 = bpf_get_current_pid_tgid() as u32;
