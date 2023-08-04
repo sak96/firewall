@@ -44,8 +44,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let rt = Runtime::new().unwrap();
     rt.spawn_blocking(|| {
-        iptables::clear_rules();
-        iptables::add_rules();
+       iptables::clear_rules();
+       iptables::add_rules();
        let mut queue = Queue::open().unwrap();
        queue.bind(0).unwrap();
        loop {

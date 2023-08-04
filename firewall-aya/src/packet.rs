@@ -2,8 +2,6 @@
 use etherparse::{InternetSlice, SlicedPacket, TransportSlice};
 // use glob::glob;
 use std::{
-    fs::{read_link, File},
-    io::{BufRead, BufReader},
     net::{IpAddr, SocketAddr},
     result::Result,
 };
@@ -90,9 +88,7 @@ impl TrafficPacket {
                     // exe,
                 })
             }
-            Err(msg) => {
-                Err(format!("failed to parse packet {}", msg))
-            }
+            Err(msg) => Err(format!("failed to parse packet {}", msg)),
         }
     }
 
