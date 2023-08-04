@@ -1,13 +1,18 @@
+use std::net::IpAddr;
 use std::thread::sleep;
 use std::time::Duration;
 
+use aya::maps::perf::AsyncPerfEventArray;
+use aya::util::online_cpus;
 use aya::{include_bytes_aligned, Bpf};
 use aya::programs::{KProbe, UProbe};
 use aya_log::BpfLogger;
+use bytes::BytesMut;
 use log::{info, warn};
-use tokio::signal;
+use tokio::{signal, task};
 use tokio::runtime::Runtime;
 use nfq::{Queue, Verdict};
+use firewall_aya_common::{IPAddr, SocketPacket};
 
 mod packet;
 mod iptables;
@@ -41,6 +46,30 @@ async fn main() -> Result<(), anyhow::Error> {
     let program: &mut UProbe = bpf.program_mut("uprobe_dns_exit").unwrap().try_into()?;
     program.load()?;
     program.attach(Some("getaddrinfo"), 0, "libc", None)?;
+
+    let mut socket_array = AsyncPerfEventArray::try_from(bpf.map_mut("SOCKET_EVENTS").unwrap())?;
+    for cpu_id in online_cpus()? {
+        let mut buf = socket_array.open(cpu_id, None)?;
+        task::spawn(async move {
+            let mut buffers = (0..10)
+                .map(|_| BytesMut::with_capacity(1024))
+                .collect::<Vec<_>>();
+
+            loop {
+                let events = buf.read_events(&mut buffers).await.unwrap();
+                for buf in buffers.iter_mut().take(events.read) {
+                    let ptr = buf.as_ptr() as *const SocketPacket;
+                    let data = unsafe { ptr.read_unaligned() };
+                    let src_addr = match data.ip_addr {
+                        IPAddr::V4(v4) => IpAddr::V4(v4.into()),
+                        IPAddr::V6(v6) => IpAddr::V6(v6.into()),
+                    };
+                    info!("LOG: SRC {}, PORT {} PID {}", src_addr, data.port, data.pid);
+                }
+            }
+        });
+    }
+
 
     let rt = Runtime::new().unwrap();
     rt.spawn_blocking(|| {

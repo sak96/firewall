@@ -24,6 +24,7 @@ use aya_bpf::macros::{kprobe, map, uprobe, uretprobe};
 use aya_bpf::maps::{HashMap, PerCpuArray, PerfEventArray};
 use aya_bpf::programs::ProbeContext;
 use aya_log_ebpf::info;
+use firewall_aya_common::{IPAddr, SocketPacket};
 
 const AF_INET: u16 = 2;
 const AF_INET6: u16 = 10;
@@ -31,6 +32,8 @@ const AF_INET6: u16 = 10;
 #[map]
 static mut SOCKET_REQUESTS: HashMap<u32, (*const sock, *const sockaddr)> =
     HashMap::with_max_entries(1024, 0);
+#[map(name = "SOCKET_EVENTS")]
+static SOCKET_EVENTS: PerfEventArray<SocketPacket> = PerfEventArray::with_max_entries(1024, 0);
 
 #[kprobe]
 pub fn kprobe_security_socket_connect(ctx: ProbeContext) -> u32 {
@@ -41,8 +44,6 @@ fn try_kprobe_security_socket_connect(ctx: ProbeContext) -> Result<u32, i64> {
     let pid = bpf_get_current_pid_tgid() >> 32;
     let uid = bpf_get_current_uid_gid() >> 32;
     let sock_addr: *mut sockaddr = ctx.arg(1).ok_or(1i64)?;
-    let sock: *mut sock = ctx.arg(0).ok_or(1i64)?;
-    let sk_common = unsafe { bpf_probe_read_kernel(&(*(sock)).__sk_common as *const sock_common)? };
     let sock_family = unsafe { bpf_probe_read_kernel(&(*sock_addr).sa_family as *const u16)? };
     let prg = bpf_get_current_comm()?;
     let program = unsafe { core::str::from_utf8_unchecked(&prg) };
@@ -55,6 +56,15 @@ fn try_kprobe_security_socket_connect(ctx: ProbeContext) -> Result<u32, i64> {
                 &ctx,
                 "socket {}/{} by {}->{:ipv4}:{}", program, pid, uid, ip, port
             );
+            SOCKET_EVENTS.output(
+                &ctx,
+                &SocketPacket {
+                    ip_addr: IPAddr::from_v4(ip),
+                    port,
+                    pid,
+                },
+                0,
+            );
             Ok(0)
         }
         AF_INET6 => {
@@ -64,6 +74,15 @@ fn try_kprobe_security_socket_connect(ctx: ProbeContext) -> Result<u32, i64> {
             info!(
                 &ctx,
                 "socket {}/{} by {}->{:ipv6}:{}", program, pid, uid, ip, port
+            );
+            SOCKET_EVENTS.output(
+                &ctx,
+                &SocketPacket {
+                    ip_addr: IPAddr::from_v6(ip),
+                    port,
+                    pid,
+                },
+                0,
             );
             Ok(0)
         }
@@ -104,6 +123,8 @@ pub fn uprobe_dns_exit(ctx: ProbeContext) -> u32 {
 
 #[map]
 pub static mut HOSTNAME: PerCpuArray<Buf> = PerCpuArray::with_max_entries(1, 0);
+#[map(name = "DNS_EVENTS")]
+static mut DNS_EVENTS: PerfEventArray<()> = PerfEventArray::<()>::with_max_entries(1024, 0);
 
 fn try_uprobe_dns_exit(ctx: ProbeContext) -> Result<u32, i64> {
     let tid: u32 = bpf_get_current_pid_tgid() as u32;
